@@ -42,35 +42,18 @@ pip install -r requirements.txt
 6. Connect your logic to the Streamlit UI in `app.py`.
 7. Refine UML so it matches what you actually built.
 
-## 🖥️ Sample Output
+## ✨ Features
 
-Paste a sample of your app's CLI or Streamlit output here so a reader can see what a generated plan looks like:
-
-```
-Biscuit (dog, Golden Retriever) | Age: 36mo | Energy: high | Medical notes: arthritis
-Mochi (cat, Siamese) | Age: 18mo | Energy: medium | Medical notes: None
-
-======================================================
-  Today's Schedule — 2026-06-23
-  Owner: Jordan (budget: 120 min)
-======================================================
-  00:00  [critical] Arthritis medication (5min) — Biscuit
-  00:05  [critical] Feeding (10min) — Mochi
-  00:15  [high    ] Morning walk (30min) — Biscuit
-  00:45  [medium  ] Evening walk (25min) — Biscuit
-  01:10  [medium  ] Enrichment play (20min) — Mochi
-
-  Deferred (1):
-    - Grooming session (45min, low)
-
-  Reasoning:
-    SCHEDULED 'Arthritis medication' [Biscuit] priority=critical, 5min, slot=morning, starts at min 0.
-    SCHEDULED 'Feeding' [Mochi] priority=critical, 10min, slot=morning, starts at min 5.
-    SCHEDULED 'Morning walk' [Biscuit] priority=high, 30min, slot=morning, starts at min 15.
-    SCHEDULED 'Evening walk' [Biscuit] priority=medium, 25min, slot=evening, starts at min 45.
-    SCHEDULED 'Enrichment play' [Mochi] priority=medium, 20min, slot=anytime, starts at min 70.
-    DEFERRED  'Grooming session' [Biscuit]: needs 135 min total, limit is 120 min.
-```
+| Feature | Description |
+| ------- | ----------- |
+| **Priority-based scheduling** | Tasks sorted critical → high → medium → low. Within each tier, pets with medical conditions are scheduled first. |
+| **Greedy time-budget enforcement** | Owner sets a daily care budget (hours). Tasks that would exceed it are automatically deferred, never silently dropped. |
+| **Chronological sorting** | `sort_by_time()` reorders the generated plan by `time_slot_preference`. Specific `HH:MM` times interleave correctly with named slots (`morning` = 06:00, `anytime` = 12:00, `evening` = 18:00). |
+| **Pet & status filtering** | `filter_tasks()` narrows the view by pet name and/or completion status — composable and case-insensitive. |
+| **Conflict warnings** | Two-pass detection: exact `HH:MM` slot collisions and duration-overlap on `[start, start+duration)` intervals. Warnings surface in the UI as `st.warning()` banners; the schedule is never crashed. |
+| **Daily recurrence** | Recurring tasks store a `due_date`. Marking one complete calls `generate_next_occurrence()`, which returns a fresh `Task` with `due_date + timedelta`. `apply_recurring_tasks()` attaches all next-day instances to the correct pets automatically. |
+| **Natural-language decision log** | Every scheduling decision is logged (`SCHEDULED`, `DEFERRED`, `SKIPPED`, `CONFLICT`, `RECURRING`) and exposed in the UI for full transparency. |
+| **Streamlit UI** | Three-tab interface: generate and view the sorted, filtered schedule; manage pets; add tasks. Conflicts are shown as prominent warning banners above the timeline. |
 
 ## 🧪 Testing PawPal+
 
@@ -172,12 +155,85 @@ The system is **production-ready** for a single-owner, single-day scheduling con
 
 ## 📸 Demo Walkthrough
 
-Describe your app in numbered steps so a reader can follow along without watching a video:
+### UI Overview
 
-1. <!-- Describe this step -->
-2. <!-- Describe this step -->
-3. <!-- Describe this step -->
-4. <!-- Describe this step -->
-5. <!-- Add more steps as needed -->
+The app opens to a three-tab layout with a collapsible sidebar:
 
-**Screenshot or video** *(optional)*: `<!-- Insert a screenshot or link to a demo video here -->`
+- **Sidebar** — set the owner's name, email, and daily care budget (hours slider). Live metrics show total pets and tasks.
+- **Tab 1 — Today's Schedule** — generate the day's plan, view the sorted timeline, apply filters, and read conflict warnings and the decision log.
+- **Tab 2 — Manage Pets** — register new pets (name, species, breed, age, energy level, medical notes), view registered pets as cards with their task lists, and remove pets or individual tasks.
+- **Tab 3 — Add Tasks** — assign a task (title, category, duration, priority, time preference, recurrence) to any registered pet.
+
+### Example Workflow
+
+1. **Open the app** — demo data loads automatically: owner Jordan, pets Biscuit (arthritic dog) and Mochi (cat).
+2. **Adjust the budget** — drag the sidebar slider to 2.5 hours (150 min).
+3. **Add a new pet** — go to **Manage Pets**, fill in the form, click *Register Pet*. The sidebar metric updates instantly.
+4. **Add a task** — go to **Add Tasks**, select Biscuit, enter "Hip physiotherapy", 20 min, priority `high`, slot `10:00`, mark recurring daily.
+5. **Generate the plan** — go to **Today's Schedule**, click *Generate Today's Care Plan*.
+6. **Read conflict banners** — if two tasks share the same `HH:MM` slot (e.g., Arthritis medication and Breakfast feeding both request `08:00`), a yellow `st.warning()` banner appears above the timeline identifying which task's preference cannot be honored.
+7. **Sort & filter** — use the filter dropdowns to view only Biscuit's pending tasks. The timeline reorders chronologically via `sort_by_time()`.
+8. **Expand the decision log** — every `SCHEDULED`, `DEFERRED`, `CONFLICT`, and `RECURRING` entry is color-coded (green / orange / red / blue).
+
+### Key Scheduler Behaviors Shown
+
+| Behavior | What you see |
+| -------- | ------------ |
+| Priority ordering | Arthritis medication (critical) always appears before Morning walk (high) |
+| Medical urgency | Biscuit's tasks scheduled before Mochi's within the same priority tier |
+| Time-sorted timeline | After filtering, tasks reorder by slot time (08:00 → 09:00 → 15:00 → 18:30), not insertion order |
+| Deferred tasks | Grooming session (low, 45 min) appears in the *Deferred* column when budget runs short |
+| Conflict warning | `st.warning()` banner: *"'Breakfast feeding' requests slot 08:00 already claimed by 'Arthritis medication'"* |
+| Recurring rollover | Marking a daily task complete creates the next-day instance, logged as `RECURRING` |
+
+### CLI Output (`python main.py`)
+
+```
+────────────────────────────────────────────────────────────────────────
+  Pet Profiles
+────────────────────────────────────────────────────────────────────────
+  Biscuit (dog, Golden Retriever) | Age: 36mo | Energy: high | Medical notes: arthritis
+  Mochi (cat, Siamese) | Age: 18mo | Energy: medium | Medical notes: None
+
+────────────────────────────────────────────────────────────────────────
+  4.2 — All tasks, sorted by time slot (pre-schedule)
+────────────────────────────────────────────────────────────────────────
+    ·  [high    ] Morning walk          (30min, slot=morning) — Biscuit
+    ·  [critical] Arthritis medication  ( 5min, slot=08:00)   — Biscuit
+    ·  [critical] Breakfast feeding     (10min, slot=08:00)   — Mochi
+    ·  [low     ] Grooming session      (45min, slot=anytime) — Biscuit
+    ·  [medium  ] Enrichment play       (20min, slot=15:30)   — Mochi
+    ·  [medium  ] Evening walk          (25min, slot=evening) — Biscuit
+    ·  [high    ] Evening feeding       (10min, slot=18:00)   — Mochi
+
+────────────────────────────────────────────────────────────────────────
+  Scheduled tasks (sorted by time slot)
+────────────────────────────────────────────────────────────────────────
+    ·  00:00  [critical] Arthritis medication  ( 5min, slot=08:00)   — Biscuit
+    ·  00:05  [critical] Breakfast feeding     (10min, slot=08:00)   — Mochi
+    ·  00:15  [high    ] Morning walk          (30min, slot=morning) — Biscuit
+    ·  00:45  [high    ] Evening feeding       (10min, slot=18:00)   — Mochi
+    ·  00:55  [medium  ] Evening walk          (25min, slot=evening) — Biscuit
+    ·  01:20  [medium  ] Enrichment play       (20min, slot=15:30)   — Mochi
+    ·  01:40  [low     ] Grooming session      (45min, slot=anytime) — Biscuit
+
+  Deferred (0): all tasks fit within the 150 min budget.
+
+────────────────────────────────────────────────────────────────────────
+  4.4 — Conflict Warnings
+────────────────────────────────────────────────────────────────────────
+  ⚠  'Breakfast feeding' requests slot 08:00 already claimed by
+     'Arthritis medication'; preference cannot be honored.
+
+────────────────────────────────────────────────────────────────────────
+  4.3 — Recurring tasks rolled over
+────────────────────────────────────────────────────────────────────────
+  Marked complete: Arthritis medication [Biscuit]
+  Marked complete: Breakfast feeding    [Mochi]
+  Marked complete: Evening feeding      [Mochi]
+
+  Next occurrences created: 3
+    → Arthritis medication  due 2026-06-24
+    → Breakfast feeding     due 2026-06-24
+    → Evening feeding       due 2026-06-24
+```

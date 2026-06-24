@@ -1,351 +1,359 @@
 from pawpal_system import DailyScheduler, Owner, Pet, Task
 import streamlit as st
-from datetime import date, datetime
+from datetime import date
 
-# Page configuration for a premium look
 st.set_page_config(
-    page_title="PawPal+ | Premium Pet Care Planner",
+    page_title="PawPal+ | Pet Care Planner",
     page_icon="🐾",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# Custom premium styling via markdown
 st.markdown(
     """
     <style>
-    .main {
-        background-color: #fafafa;
-    }
-    .pet-card {
-        background-color: #ffffff;
-        border-radius: 12px;
-        padding: 20px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-        border-left: 5px solid #ff4b4b;
-        margin-bottom: 15px;
-    }
     .task-card {
         background-color: #ffffff;
         border-radius: 10px;
         padding: 15px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.06);
         border: 1px solid #eee;
         margin-bottom: 10px;
     }
-    .timeline-time {
-        font-weight: bold;
-        color: #ff4b4b;
-        font-size: 1.1em;
-    }
+    .timeline-time { font-weight: bold; color: #ff4b4b; font-size: 1.05em; }
     .priority-badge {
-        font-size: 0.8em;
-        padding: 3px 8px;
-        border-radius: 15px;
-        font-weight: bold;
-        text-transform: uppercase;
-        color: white;
+        font-size: 0.78em; padding: 3px 8px; border-radius: 15px;
+        font-weight: bold; text-transform: uppercase; color: white;
     }
     .badge-critical { background-color: #d9534f; }
-    .badge-high { background-color: #f0ad4e; }
-    .badge-medium { background-color: #5bc0de; }
-    .badge-low { background-color: #777; }
+    .badge-high     { background-color: #f0ad4e; }
+    .badge-medium   { background-color: #5bc0de; }
+    .badge-low      { background-color: #777; }
     </style>
     """,
-    unsafe_allowed_html=True,
+    unsafe_allow_html=True,
 )
 
+
 # ---------------------------------------------------------------------------
-# Session State & Memory Management (Seed Data)
+# Session state
 # ---------------------------------------------------------------------------
 
-def reset_to_defaults():
+def _build_defaults() -> Owner:
     owner = Owner("Jordan", "jordan@pawpal.io", available_hours_per_day=2.0)
-    
-    biscuit = Pet("Biscuit", "dog", "Golden Retriever", 36, energy_level="high", medical_notes=["arthritis"])
+
+    biscuit = Pet("Biscuit", "dog", "Golden Retriever", 36,
+                  energy_level="high", medical_notes=["arthritis"])
     mochi = Pet("Mochi", "cat", "Siamese", 18, energy_level="medium")
-    
-    biscuit.add_task(Task("Arthritis medication", "medication", 5, priority="critical", time_slot_preference="morning"))
-    biscuit.add_task(Task("Morning walk", "walk", 30, priority="high", time_slot_preference="morning"))
-    biscuit.add_task(Task("Evening walk", "walk", 25, priority="medium", time_slot_preference="evening"))
-    biscuit.add_task(Task("Grooming session", "grooming", 45, priority="low", time_slot_preference="anytime"))
-    
-    mochi.add_task(Task("Feeding", "feeding", 10, priority="critical", time_slot_preference="morning", is_recurring=True, recurrence_pattern="daily"))
-    mochi.add_task(Task("Enrichment play", "enrichment", 20, priority="medium", time_slot_preference="anytime"))
-    
+
+    biscuit.add_task(Task("Arthritis medication", "medication", 5,
+                          priority="critical", time_slot_preference="08:00",
+                          is_recurring=True, recurrence_pattern="daily",
+                          due_date=date.today()))
+    biscuit.add_task(Task("Morning walk",   "walk",    30, priority="high",   time_slot_preference="09:00"))
+    biscuit.add_task(Task("Evening walk",   "walk",    25, priority="medium", time_slot_preference="18:30"))
+    biscuit.add_task(Task("Grooming",       "grooming",45, priority="low",    time_slot_preference="anytime"))
+
+    mochi.add_task(Task("Breakfast feeding","feeding", 10, priority="critical",time_slot_preference="08:00",
+                        is_recurring=True, recurrence_pattern="daily", due_date=date.today()))
+    mochi.add_task(Task("Enrichment play",  "enrichment",20,priority="medium",time_slot_preference="15:00"))
+
     owner.add_pet(biscuit)
     owner.add_pet(mochi)
-    
-    st.session_state.owner = owner
-    st.session_state.generated_schedule = None
+    return owner
 
-# Initialize persistent Owner model in the vault of session state
+
+def _reset():
+    st.session_state.owner = _build_defaults()
+    st.session_state.sched_data = None
+
+
 if "owner" not in st.session_state:
-    reset_to_defaults()
+    _reset()
 
-# Reference owner directly from memory
 owner: Owner = st.session_state.owner
 
+
 # ---------------------------------------------------------------------------
-# Sidebar Configuration
+# Sidebar
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
-    st.title("🐾 PawPal+ Configuration")
+    st.title("🐾 PawPal+")
     st.markdown("---")
-    st.subheader("👤 Owner Profile")
-    
-    # Update owner properties in place
-    owner.name = st.text_input("Name", value=owner.name)
+    st.subheader("Owner Profile")
+    owner.name  = st.text_input("Name",  value=owner.name)
     owner.email = st.text_input("Email", value=owner.email)
-    
-    # Hour budget selector (converted to float hours)
-    budget_hours = st.slider(
-        "Daily Available Time (Hours)",
-        min_value=0.5,
-        max_value=12.0,
-        value=float(owner.available_hours_per_day),
-        step=0.5
+    owner.available_hours_per_day = st.slider(
+        "Daily Budget (hours)", 0.5, 12.0, float(owner.available_hours_per_day), 0.5
     )
-    owner.available_hours_per_day = budget_hours
-    
     st.markdown("---")
-    st.subheader("stats Dashboard")
-    st.metric("Total Pets Onboarded", len(owner.get_all_pets()))
-    
-    total_tasks = sum(len(p.get_tasks()) for p in owner.get_all_pets())
-    st.metric("Total Tasks Tracked", total_tasks)
-    
+    st.metric("Pets", len(owner.get_all_pets()))
+    st.metric("Tasks", sum(len(p.get_tasks()) for p in owner.get_all_pets()))
     st.markdown("---")
-    if st.sidebar.button("🔄 Reset to Default Seed Data"):
-        reset_to_defaults()
-        st.success("State reset successfully!")
+    if st.button("🔄 Reset to demo data"):
+        _reset()
         st.rerun()
 
+
 # ---------------------------------------------------------------------------
-# Main App Layout
+# Header
 # ---------------------------------------------------------------------------
 
 st.title("🐾 PawPal+ Care Dashboard")
-st.caption(f"Logged in as **{owner.name}** ({owner.email}) • Daily Care Budget: **{int(owner.available_hours_per_day * 60)} minutes**")
+st.caption(
+    f"**{owner.name}** ({owner.email})  •  "
+    f"Daily budget: **{int(owner.available_hours_per_day * 60)} min**"
+)
 
 tab1, tab2, tab3 = st.tabs(["📋 Today's Schedule", "🐾 Manage Pets", "➕ Add Tasks"])
 
+
 # ---------------------------------------------------------------------------
-# Tab 1: Today's Schedule Generation & Timeline View
+# Tab 1 — Schedule
 # ---------------------------------------------------------------------------
+
 with tab1:
-    st.subheader("⏰ Daily Schedule Planner")
-    
-    if len(owner.get_all_pets()) == 0:
-        st.info("You don't have any pets onboarded. Head over to the **Manage Pets** tab to get started!")
+    st.subheader("Daily Schedule Planner")
+
+    all_pets = owner.get_all_pets()
+    total_tasks = sum(len(p.get_tasks()) for p in all_pets)
+
+    if not all_pets:
+        st.info("No pets registered. Go to **Manage Pets** to get started.")
     elif total_tasks == 0:
-        st.info("No tasks scheduled yet. Head over to the **Add Tasks** tab to queue some care activities!")
+        st.info("No tasks yet. Go to **Add Tasks** to queue care activities.")
     else:
-        col_ctrl, col_status = st.columns([1, 3])
-        with col_ctrl:
-            if st.button("🚀 Generate Today's Care Plan", use_container_width=True):
-                # Instantiate scheduler
-                scheduler = DailyScheduler(owner, date.today())
-                scheduler.load_from_owner()
-                scheduler.generate_schedule()
-                
-                # Cache results in session state to persist through UI interactions
-                st.session_state.generated_schedule = {
-                    "scheduled": scheduler.scheduled_tasks,
-                    "deferred": scheduler.unscheduled_tasks,
-                    "reasoning": scheduler.get_reasoning(),
-                    "total_budget": scheduler.daily_time_limit_minutes,
-                }
-                st.success("Care schedule generated!")
-        
-        # Display the schedule plan if cached in session state
-        if st.session_state.generated_schedule:
-            sched_data = st.session_state.generated_schedule
-            
+        if st.button("🚀 Generate Today's Care Plan", use_container_width=False):
+            scheduler = DailyScheduler(owner, date.today())
+            scheduler.load_from_owner()
+            scheduler.generate_schedule()
+
+            st.session_state.sched_data = {
+                "scheduler": scheduler,
+                "scheduled": scheduler.scheduled_tasks,
+                "deferred":  scheduler.unscheduled_tasks,
+                "reasoning": scheduler.get_reasoning(),
+                "budget":    scheduler.daily_time_limit_minutes,
+            }
+            st.rerun()
+
+        sched = st.session_state.get("sched_data")
+        if sched:
+            scheduler: DailyScheduler = sched["scheduler"]
+
+            # ---- Conflict banners (prominent, before timeline) -----------
+            conflicts = [l for l in sched["reasoning"] if "CONFLICT" in l]
+            if conflicts:
+                st.markdown("#### ⚠️ Scheduling Conflicts Detected")
+                for c in conflicts:
+                    # Strip the leading log-prefix so the message reads naturally
+                    msg = c.replace("CONFLICT  ", "").replace("CONFLICT ", "")
+                    st.warning(msg)
+            else:
+                st.success("No scheduling conflicts — all time slots are clear.")
+
             st.divider()
-            
-            col_schedule, col_deferred = st.columns([2, 1])
-            
-            with col_schedule:
-                st.markdown("### 📅 Timeline View")
-                if not sched_data["scheduled"]:
-                    st.warning("No tasks were scheduled. Check priorities or daily budget limit.")
+
+            # ---- Filter controls --------------------------------------------
+            st.markdown("#### Filter Schedule View")
+            filter_col1, filter_col2 = st.columns(2)
+            with filter_col1:
+                pet_names = ["All pets"] + [p.name for p in all_pets]
+                filter_pet = st.selectbox("Filter by pet", pet_names, key="filter_pet")
+            with filter_col2:
+                filter_status = st.selectbox(
+                    "Filter by status",
+                    ["All tasks", "Pending only", "Completed only"],
+                    key="filter_status",
+                )
+
+            # Map UI choices to filter_tasks() args
+            pet_name_arg = None if filter_pet == "All pets" else filter_pet
+            completed_arg = None
+            if filter_status == "Pending only":
+                completed_arg = False
+            elif filter_status == "Completed only":
+                completed_arg = True
+
+            # Apply filter then sort chronologically via sort_by_time()
+            filtered = scheduler.filter_tasks(
+                pet_name=pet_name_arg,
+                completed=completed_arg,
+                entries=sched["scheduled"],
+            )
+            sorted_entries = scheduler.sort_by_time(filtered)
+
+            st.divider()
+
+            # ---- Timeline + Deferred columns --------------------------------
+            col_timeline, col_deferred = st.columns([2, 1])
+
+            with col_timeline:
+                st.markdown(f"#### Timeline ({len(sorted_entries)} tasks)")
+                if not sorted_entries:
+                    st.info("No tasks match the current filter.")
                 else:
-                    for entry in sched_data["scheduled"]:
+                    for entry in sorted_entries:
                         task: Task = entry["task"]
-                        pet: Pet = entry["pet"]
+                        pet:  Pet  = entry["pet"]
                         start = entry["start_minute"]
                         h, m = divmod(start, 60)
-                        
-                        # Priority styling
-                        p_badge = f'<span class="priority-badge badge-{task.priority}">{task.priority}</span>'
-                        
+                        badge = (
+                            f'<span class="priority-badge badge-{task.priority}">'
+                            f'{task.priority}</span>'
+                        )
+                        recur_icon = " 🔁" if task.is_recurring else ""
                         st.markdown(
                             f"""
                             <div class="task-card">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <div>
-                                        <span class="timeline-time">{h:02d}:{m:02d}</span> &nbsp;&nbsp;
-                                        <strong>{task.title}</strong> ({task.duration_minutes} min) — <em>{pet.name} ({pet.species})</em>
-                                    </div>
-                                    <div>{p_badge}</div>
+                              <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <div>
+                                  <span class="timeline-time">{h:02d}:{m:02d}</span>&nbsp;&nbsp;
+                                  <strong>{task.title}{recur_icon}</strong>
+                                  ({task.duration_minutes} min) — <em>{pet.name}</em>
                                 </div>
+                                <div>{badge}</div>
+                              </div>
                             </div>
                             """,
-                            unsafe_allowed_html=True
+                            unsafe_allow_html=True,
                         )
-            
+
             with col_deferred:
-                st.markdown("### ⏳ Deferred Tasks")
-                if not sched_data["deferred"]:
-                    st.success("All tasks scheduled! No tasks deferred. 🎉")
+                st.markdown(f"#### Deferred ({len(sched['deferred'])} tasks)")
+                if not sched["deferred"]:
+                    st.success("All tasks fit within the daily budget! 🎉")
                 else:
-                    for task in sched_data["deferred"]:
-                        p_badge = f'<span class="priority-badge badge-{task.priority}">{task.priority}</span>'
+                    for task in sched["deferred"]:
+                        badge = (
+                            f'<span class="priority-badge badge-{task.priority}">'
+                            f'{task.priority}</span>'
+                        )
                         st.markdown(
                             f"""
-                            <div class="task-card" style="border-left: 5px solid #777;">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <div>
-                                        <strong>{task.title}</strong> ({task.duration_minutes} min)
-                                    </div>
-                                    <div>{p_badge}</div>
-                                </div>
+                            <div class="task-card" style="border-left:4px solid #ccc;">
+                              <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <div><strong>{task.title}</strong> ({task.duration_minutes} min)</div>
+                                <div>{badge}</div>
+                              </div>
                             </div>
                             """,
-                            unsafe_allowed_html=True
+                            unsafe_allow_html=True,
                         )
-            
+
             st.divider()
-            with st.expander("🔍 Scheduler Decision Logs & Reasoning", expanded=True):
-                for log_line in sched_data["reasoning"]:
-                    if "SCHEDULED" in log_line:
-                        st.write(f"✅ {log_line}")
-                    elif "DEFERRED" in log_line:
-                        st.write(f"⚠️ {log_line}")
+
+            # ---- Decision log -----------------------------------------------
+            with st.expander("🔍 Scheduler Decision Log", expanded=False):
+                for line in sched["reasoning"]:
+                    if "SCHEDULED" in line:
+                        st.success(line, icon="✅")
+                    elif "DEFERRED" in line:
+                        st.warning(line, icon="⏳")
+                    elif "CONFLICT" in line:
+                        st.error(line, icon="⚠️")
+                    elif "RECURRING" in line:
+                        st.info(line, icon="🔁")
                     else:
-                        st.write(f"ℹ️ {log_line}")
+                        st.write(f"ℹ️ {line}")
+
 
 # ---------------------------------------------------------------------------
-# Tab 2: Manage Pets
+# Tab 2 — Manage Pets
 # ---------------------------------------------------------------------------
+
 with tab2:
-    st.subheader("🐾 Register & Onboard Your Pets")
-    
-    # Form to register a new pet
+    st.subheader("Register & Manage Pets")
+
     with st.form("register_pet_form", clear_on_submit=True):
-        col_p1, col_p2 = st.columns(2)
-        with col_p1:
-            new_pet_name = st.text_input("Pet Name*", placeholder="e.g. Charlie")
-            new_pet_species = st.selectbox("Species*", ["dog", "cat", "bird", "rabbit", "reptile", "other"])
-            new_pet_breed = st.text_input("Breed / Breed Mix*", placeholder="e.g. Beagle")
-        with col_p2:
-            new_pet_age = st.number_input("Age (Months)*", min_value=1, max_value=360, value=24)
-            new_pet_energy = st.selectbox("Energy Level*", ["high", "medium", "low"], index=1)
-            new_pet_meds = st.text_area("Medical Notes / Conditions", placeholder="e.g. arthritis, daily insulin (separate multiple with commas)")
-            
-        submitted_pet = st.form_submit_button("➕ Onboard Pet")
-        
-        if submitted_pet:
-            if not new_pet_name or not new_pet_breed:
-                st.error("Please fill in all required fields marked with *.")
+        c1, c2 = st.columns(2)
+        with c1:
+            p_name    = st.text_input("Pet Name *", placeholder="e.g. Charlie")
+            p_species = st.selectbox("Species *", ["dog","cat","bird","rabbit","reptile","other"])
+            p_breed   = st.text_input("Breed *", placeholder="e.g. Beagle")
+        with c2:
+            p_age    = st.number_input("Age (months) *", 1, 360, 24)
+            p_energy = st.selectbox("Energy Level *", ["high","medium","low"], index=1)
+            p_meds   = st.text_area("Medical Notes", placeholder="e.g. arthritis, diabetes (comma-separated)")
+        if st.form_submit_button("➕ Register Pet"):
+            if not p_name or not p_breed:
+                st.error("Name and Breed are required.")
             else:
-                med_list = [m.strip() for m in new_pet_meds.split(",") if m.strip()]
-                new_pet = Pet(
-                    name=new_pet_name,
-                    species=new_pet_species,
-                    breed=new_pet_breed,
-                    age_months=int(new_pet_age),
-                    energy_level=new_pet_energy,
-                    medical_notes=med_list
-                )
-                owner.add_pet(new_pet)
-                st.success(f"Registered {new_pet_name} successfully!")
+                med_list = [m.strip() for m in p_meds.split(",") if m.strip()]
+                owner.add_pet(Pet(p_name, p_species, p_breed, int(p_age), p_energy, med_list))
+                st.success(f"{p_name} registered!")
                 st.rerun()
 
     st.markdown("---")
-    st.subheader("🐾 Registered Roster")
-    
-    pets_list = owner.get_all_pets()
-    if not pets_list:
-        st.info("No pets registered yet. Onboard one using the form above.")
+    pets = owner.get_all_pets()
+    if not pets:
+        st.info("No pets registered yet.")
     else:
-        # Display pet cards
-        for pet in pets_list:
-            st.markdown(
-                f"""
-                <div class="pet-card">
-                    <h3>🐾 {pet.name}</h3>
-                    <p><strong>Profile:</strong> {pet.get_care_summary()}</p>
-                </div>
-                """,
-                unsafe_allowed_html=True
-            )
-            
-            # Sub-display details and removal of tasks / pets
-            col_pet_del, col_task_view = st.columns([1, 5])
-            with col_pet_del:
-                if st.button(f"🗑️ Remove {pet.name}", key=f"remove_pet_{pet.pet_id}"):
-                    owner.remove_pet(pet.pet_id)
-                    st.success(f"Removed {pet.name} from the roster.")
-                    st.rerun()
-            with col_task_view:
-                pet_tasks = pet.get_tasks()
-                if pet_tasks:
-                    with st.expander(f"📋 {pet.name}'s Tasks ({len(pet_tasks)})"):
-                        for t in pet_tasks:
-                            col_t_desc, col_t_del = st.columns([5, 1])
-                            with col_t_desc:
-                                st.write(f"- **{t.title}** ({t.category}) • {t.duration_minutes} min • priority: {t.priority}")
-                            with col_t_del:
-                                if st.button("🗑️", key=f"del_task_{t.task_id}"):
-                                    pet.remove_task(t.task_id)
-                                    st.success(f"Removed task '{t.title}'")
-                                    st.rerun()
+        for pet in pets:
+            with st.container():
+                st.markdown(
+                    f'<div style="border-left:5px solid #ff4b4b;padding:10px;margin-bottom:8px;">'
+                    f'<strong>🐾 {pet.name}</strong> — {pet.get_care_summary()}</div>',
+                    unsafe_allow_html=True,
+                )
+                col_del, col_tasks = st.columns([1, 5])
+                with col_del:
+                    if st.button(f"Remove {pet.name}", key=f"rp_{pet.pet_id}"):
+                        owner.remove_pet(pet.pet_id)
+                        st.rerun()
+                with col_tasks:
+                    tasks = pet.get_tasks()
+                    if tasks:
+                        with st.expander(f"{pet.name}'s tasks ({len(tasks)})"):
+                            for t in tasks:
+                                tc, td = st.columns([5, 1])
+                                with tc:
+                                    st.write(f"**{t.title}** · {t.category} · {t.duration_minutes}min · {t.priority}")
+                                with td:
+                                    if st.button("🗑️", key=f"dt_{t.task_id}"):
+                                        pet.remove_task(t.task_id)
+                                        st.rerun()
+
 
 # ---------------------------------------------------------------------------
-# Tab 3: Add Tasks
+# Tab 3 — Add Tasks
 # ---------------------------------------------------------------------------
+
 with tab3:
-    st.subheader("➕ Schedule Pet Care Tasks")
-    
-    pets_list = owner.get_all_pets()
-    if not pets_list:
-        st.info("Please register at least one pet under the **Manage Pets** tab before scheduling tasks.")
+    st.subheader("Schedule a Care Task")
+    pets = owner.get_all_pets()
+    if not pets:
+        st.info("Register a pet first under **Manage Pets**.")
     else:
-        # Select pet to add task to
-        pet_options = {pet.name: pet for pet in pets_list}
-        selected_pet_name = st.selectbox("Select Pet*", list(pet_options.keys()))
-        selected_pet = pet_options[selected_pet_name]
-        
+        pet_map = {p.name: p for p in pets}
+        selected_name = st.selectbox("Assign to pet *", list(pet_map))
+        selected_pet  = pet_map[selected_name]
+
         with st.form("add_task_form", clear_on_submit=True):
-            col_t1, col_t2 = st.columns(2)
-            with col_t1:
-                task_title = st.text_input("Task Title*", placeholder="e.g. Afternoon feeding")
-                task_category = st.selectbox("Category*", ["feeding", "walk", "medication", "grooming", "enrichment", "other"])
-                task_duration = st.number_input("Duration (Minutes)*", min_value=1, max_value=240, value=20, step=5)
-            with col_t2:
-                task_priority = st.selectbox("Priority*", ["critical", "high", "medium", "low"], index=2)
-                task_slot = st.selectbox("Time Preference*", ["morning", "anytime", "evening", "08:00", "12:00", "18:00"], index=1)
-                task_recurring = st.checkbox("Is recurring?")
-                task_pattern = st.selectbox("Recurrence Pattern", ["daily", "weekly"], index=0)
-                
-            submitted_task = st.form_submit_button("➕ Schedule Task")
-            
-            if submitted_task:
-                if not task_title:
-                    st.error("Please enter a task title.")
+            c1, c2 = st.columns(2)
+            with c1:
+                t_title    = st.text_input("Task Title *", placeholder="e.g. Afternoon feeding")
+                t_category = st.selectbox("Category *", ["feeding","walk","medication","grooming","enrichment","other"])
+                t_duration = st.number_input("Duration (min) *", 1, 240, 20, step=5)
+            with c2:
+                t_priority = st.selectbox("Priority *", ["critical","high","medium","low"], index=2)
+                t_slot     = st.selectbox("Time Preference *",
+                                          ["morning","anytime","evening","08:00","09:00",
+                                           "12:00","15:00","18:00","18:30"], index=1)
+                t_recurring= st.checkbox("Recurring task?")
+                t_pattern  = st.selectbox("Recurrence", ["daily","weekly"])
+            if st.form_submit_button("➕ Add Task"):
+                if not t_title:
+                    st.error("Task title is required.")
                 else:
-                    new_task = Task(
-                        title=task_title,
-                        category=task_category,
-                        duration_minutes=int(task_duration),
-                        priority=task_priority,
-                        time_slot_preference=task_slot,
-                        is_recurring=task_recurring,
-                        recurrence_pattern=task_pattern if task_recurring else None
-                    )
-                    selected_pet.add_task(new_task)
-                    st.success(f"Added task '{task_title}' to {selected_pet_name}'s schedule!")
+                    selected_pet.add_task(Task(
+                        title=t_title, category=t_category,
+                        duration_minutes=int(t_duration), priority=t_priority,
+                        time_slot_preference=t_slot,
+                        is_recurring=t_recurring,
+                        recurrence_pattern=t_pattern if t_recurring else None,
+                        due_date=date.today() if t_recurring else None,
+                    ))
+                    st.success(f"Added '{t_title}' to {selected_name}'s plan.")
                     st.rerun()

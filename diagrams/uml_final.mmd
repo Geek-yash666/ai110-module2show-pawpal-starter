@@ -1,0 +1,72 @@
+classDiagram
+    direction TB
+
+    class Owner {
+        +str owner_id
+        +str name
+        +str email
+        +float available_hours_per_day
+        +List~Pet~ pets
+        +add_pet(pet: Pet) void
+        +remove_pet(pet_id: str) void
+        +get_all_pets() List~Pet~
+        +get_all_tasks() List~Dict~
+    }
+
+    class Pet {
+        +str pet_id
+        +str name
+        +str species
+        +str breed
+        +int age_months
+        +str energy_level
+        +List~str~ medical_notes
+        +Dict preferences
+        +List~Task~ tasks
+        +add_task(task: Task) void
+        +remove_task(task_id: str) void
+        +get_tasks() List~Task~
+        +update_profile(data: Dict) void
+        +get_care_summary() str
+    }
+
+    class Task {
+        +str task_id
+        +str title
+        +str category
+        +int duration_minutes
+        +str priority
+        +str time_slot_preference
+        +bool is_recurring
+        +str recurrence_pattern
+        +date due_date
+        +bool is_completed
+        +mark_as_completed() void
+        +update_task_details(data: Dict) void
+        +is_urgent() bool
+        +generate_next_occurrence() Task
+    }
+
+    class DailyScheduler {
+        +Owner owner
+        +date target_date
+        +int daily_time_limit_minutes
+        +List~Dict~ task_pool
+        +List~Dict~ scheduled_tasks
+        +List~Task~ unscheduled_tasks
+        +List~str~ decision_log
+        +add_task_to_pool(task: Task, pet: Pet) void
+        +load_from_owner() void
+        +generate_schedule() List~Dict~
+        +sort_by_time(entries?) List~Dict~
+        +filter_tasks(pet_name?, completed?) List~Dict~
+        +resolve_conflicts() List~str~
+        +apply_recurring_tasks() List~Task~
+        +get_reasoning() List~str~
+    }
+
+    Owner "1" *-- "*" Pet : owns
+    Pet "1" *-- "*" Task : owns
+    DailyScheduler "1" --> "1" Owner : schedules_for
+    DailyScheduler ..> Task : stages and schedules
+    DailyScheduler ..> Pet : reads medical_notes for urgency
