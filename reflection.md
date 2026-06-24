@@ -31,8 +31,9 @@ Yes. During implementation `DailyScheduler` required an explicit `task_pool` col
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+The scheduler uses a **global greedy sort**: all tasks are ranked by priority tier → medical urgency → slot preference, then packed sequentially until the time budget runs out. This means a 5-minute low-priority task that would easily fit after all high-priority tasks are scheduled may still be deferred if a longer high-priority task exhausted the budget before it was reached in the sorted order.
+
+This tradeoff is reasonable here because correctness of care (critical meds always run first, medical pets get priority within a tier) matters more than maximizing the number of tasks completed. A full knapsack optimizer would select the highest-value subset that fits the budget, but it adds O(n²) complexity and is harder to explain to a non-technical pet owner. The greedy approach produces a predictable, auditable schedule with natural-language reasoning for every decision.
 
 ---
 

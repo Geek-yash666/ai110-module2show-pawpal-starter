@@ -218,3 +218,127 @@ class TestDailyScheduler:
         log = scheduler.get_reasoning()
         log.clear()
         assert len(scheduler.get_reasoning()) > 0  # original unaffected
+
+    def test_duration_overlap_conflict_detected(
+        self, pet_healthy: Pet, owner: Owner
+    ):
+        # Force overlapping start_minute values manually to trigger pass-2 conflict.
+        scheduler = DailyScheduler(owner, date.today())
+        t1 = Task("Walk", "walk", 30, priority="high")
+        t2 = Task("Feed", "feeding", 20, priority="high")
+        scheduler.add_task_to_pool(t1, pet_healthy)
+        scheduler.add_task_to_pool(t2, pet_healthy)
+        scheduler.generate_schedule()
+        # Inject overlapping start times to simulate fixed-time scheduling.
+        scheduler.scheduled_tasks[0]["start_minute"] = 0
+        scheduler.scheduled_tasks[1]["start_minute"] = 10  # overlaps [0,30)
+        warnings = scheduler.resolve_conflicts()
+        assert any("Duration overlap" in w for w in warnings)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — sort_by_time, filter_tasks, recurring tasks
+# ---------------------------------------------------------------------------
+
+class TestSortAndFilter:
+    def test_sort_by_time_hhmm_ordering(self, owner: Owner, pet_healthy: Pet):
+        scheduler = DailyScheduler(owner, date.today())
+        t1 = Task("Late", "walk", 10, time_slot_preference="18:00")
+        t2 = Task("Early", "feeding", 5, time_slot_preference="07:00")
+        t3 = Task("Mid", "enrichment", 15, time_slot_preference="12:00")
+        for t in (t1, t2, t3):
+            scheduler.add_task_to_pool(t, pet_healthy)
+        sorted_entries = scheduler.sort_by_time(scheduler.task_pool)
+        titles = [e["task"].title for e in sorted_entries]
+        assert titles == ["Early", "Mid", "Late"]
+
+    def test_sort_named_slots_ordering(self, owner: Owner, pet_healthy: Pet):
+        scheduler = DailyScheduler(owner, date.today())
+        t1 = Task("Evening", "walk", 10, time_slot_preference="evening")
+        t2 = Task("Morning", "feeding", 5, time_slot_preference="morning")
+        t3 = Task("Anytime", "enrichment", 15, time_slot_preference="anytime")
+        for t in (t1, t2, t3):
+            scheduler.add_task_to_pool(t, pet_healthy)
+        sorted_entries = scheduler.sort_by_time(scheduler.task_pool)
+        titles = [e["task"].title for e in sorted_entries]
+        assert titles == ["Morning", "Anytime", "Evening"]
+
+    def test_filter_by_pet_name(self, owner: Owner, pet_healthy: Pet, pet_medical: Pet):
+        scheduler = DailyScheduler(owner, date.today())
+        scheduler.add_task_to_pool(Task("Walk", "walk", 10), pet_healthy)
+        scheduler.add_task_to_pool(Task("Meds", "medication", 5), pet_medical)
+        result = scheduler.filter_tasks(pet_name=pet_healthy.name)
+        assert len(result) == 1
+        assert result[0]["pet"].pet_id == pet_healthy.pet_id
+
+    def test_filter_by_completed_false(self, owner: Owner, pet_healthy: Pet):
+        scheduler = DailyScheduler(owner, date.today())
+        done = Task("Done", "walk", 10)
+        done.mark_as_completed()
+        pending = Task("Pending", "feeding", 5)
+        scheduler.add_task_to_pool(done, pet_healthy)
+        scheduler.add_task_to_pool(pending, pet_healthy)
+        result = scheduler.filter_tasks(completed=False)
+        assert len(result) == 1
+        assert result[0]["task"].title == "Pending"
+
+    def test_filter_by_completed_true(self, owner: Owner, pet_healthy: Pet):
+        scheduler = DailyScheduler(owner, date.today())
+        done = Task("Done", "walk", 10)
+        done.mark_as_completed()
+        scheduler.add_task_to_pool(done, pet_healthy)
+        scheduler.add_task_to_pool(Task("Pending", "feeding", 5), pet_healthy)
+        result = scheduler.filter_tasks(completed=True)
+        assert len(result) == 1
+        assert result[0]["task"].is_completed is True
+
+
+class TestRecurringTasks:
+    def test_generate_next_occurrence_daily(self):
+        today = date.today()
+        task = Task("Feeding", "feeding", 10, is_recurring=True,
+                    recurrence_pattern="daily", due_date=today)
+        next_t = task.generate_next_occurrence()
+        assert next_t is not None
+        from datetime import timedelta
+        assert next_t.due_date == today + timedelta(days=1)
+        assert next_t.title == task.title
+
+    def test_generate_next_occurrence_weekly(self):
+        today = date.today()
+        task = Task("Bath", "grooming", 20, is_recurring=True,
+                    recurrence_pattern="weekly", due_date=today)
+        next_t = task.generate_next_occurrence()
+        from datetime import timedelta
+        assert next_t.due_date == today + timedelta(weeks=1)
+
+    def test_generate_next_occurrence_non_recurring_returns_none(self):
+        task = Task("Walk", "walk", 30)
+        assert task.generate_next_occurrence() is None
+
+    def test_apply_recurring_tasks_attaches_to_pet(
+        self, owner: Owner, pet_healthy: Pet
+    ):
+        today = date.today()
+        task = Task("Feeding", "feeding", 10, is_recurring=True,
+                    recurrence_pattern="daily", due_date=today)
+        pet_healthy.add_task(task)
+        owner.add_pet(pet_healthy)
+        scheduler = DailyScheduler(owner, date.today())
+        scheduler.load_from_owner()
+        task.mark_as_completed()
+        new_tasks = scheduler.apply_recurring_tasks()
+        assert len(new_tasks) == 1
+        assert new_tasks[0] in pet_healthy.tasks
+
+    def test_apply_recurring_skips_non_recurring(
+        self, owner: Owner, pet_healthy: Pet
+    ):
+        task = Task("Walk", "walk", 20)
+        task.mark_as_completed()
+        pet_healthy.add_task(task)
+        owner.add_pet(pet_healthy)
+        scheduler = DailyScheduler(owner, date.today())
+        scheduler.load_from_owner()
+        new_tasks = scheduler.apply_recurring_tasks()
+        assert len(new_tasks) == 0

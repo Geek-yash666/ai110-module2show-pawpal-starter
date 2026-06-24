@@ -90,14 +90,13 @@ Sample test output:
 
 ## 📐 Smarter Scheduling
 
-> Fill in once you've implemented scheduling logic.
-
-| Feature           | Method(s) | Notes                             |
-| ----------------- | --------- | --------------------------------- |
-| Task sorting      |           | e.g., by priority, duration       |
-| Filtering         |           | e.g., skip tasks if time runs out |
-| Conflict handling |           | e.g., overlapping time slots      |
-| Recurring tasks   |           | e.g., daily vs. weekly            |
+| Feature              | Method(s)                                          | Notes |
+| -------------------- | -------------------------------------------------- | ----- |
+| **Task sorting**     | `DailyScheduler.sort_by_time(entries?)`            | Sorts any `{task, pet}` list by `time_slot_preference`. Named slots (`morning`, `anytime`, `evening`) map to representative clock times (06:00 / 12:00 / 18:00) so they interleave naturally with explicit `HH:MM` tasks. Uses a `lambda` key over `_slot_to_minutes()`. |
+| **Priority sorting** | `DailyScheduler.generate_schedule()`               | Greedy sort: critical → high → medium → low. Within each priority tier, pets with `medical_notes` are scheduled first. Tie-breaks by slot time. |
+| **Filtering**        | `DailyScheduler.filter_tasks(pet_name, completed)` | Filters any `{task, pet}` list by pet name (case-insensitive) and/or completion status. Both parameters are optional and composable. |
+| **Conflict handling**| `DailyScheduler.resolve_conflicts()`               | Two-pass detection: (1) exact `HH:MM` slot collision; (2) duration-overlap check on `[start, start+duration)` intervals. Returns warning strings and appends to the decision log without crashing. |
+| **Recurring tasks**  | `Task.generate_next_occurrence()`, `DailyScheduler.apply_recurring_tasks()` | `generate_next_occurrence()` returns a fresh Task with `due_date = original + timedelta`. `apply_recurring_tasks()` iterates completed recurring tasks, generates the next instance, and attaches it to the owning Pet. Supports `daily` (+1 day) and `weekly` (+7 days). |
 
 ## 📸 Demo Walkthrough
 
