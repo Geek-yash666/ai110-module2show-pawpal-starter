@@ -237,3 +237,95 @@ The app opens to a three-tab layout with a collapsible sidebar:
     → Breakfast feeding     due 2026-06-24
     → Evening feeding       due 2026-06-24
 ```
+
+---
+
+## 🗂️ Data Persistence
+
+### How it works
+
+PawPal+ stores the entire owner graph — owner, pets, and all tasks — in a single `data.json` file in the project root. Every mutation in the app (adding/removing a pet or task, editing the owner profile) triggers an immediate save. On the next app launch, if `data.json` exists, it is loaded automatically; otherwise the demo data is used as a starting point.
+
+### Workflow
+
+```
+User action (add pet / add task / remove task)
+       ↓
+Owner.save_to_json("data.json")        ← writes atomically via pathlib
+       ↓
+App restarts / session clears
+       ↓
+Owner.load_from_json("data.json")      ← reconstructs full object graph
+```
+
+### Files modified
+
+| File | Change |
+| ---- | ------ |
+| `pawpal_system.py` | Added `Task.to_dict()`, `Task.from_dict()`, `Pet.to_dict()`, `Pet.from_dict()`, `Owner.to_dict()`, `Owner.from_dict()`, `Owner.save_to_json()`, `Owner.load_from_json()` |
+| `app.py` | Startup loads `data.json` if it exists; `_save(owner)` called after every mutation |
+| `main.py` | Persistence demo at end of script round-trips the owner graph through `data.json` |
+
+### Sample `data.json` (excerpt)
+
+```json
+{
+  "owner_id": "9eb24d9f-...",
+  "name": "Jordan",
+  "email": "jordan@pawpal.io",
+  "available_hours_per_day": 2.5,
+  "pets": [
+    {
+      "pet_id": "4053bdad-...",
+      "name": "Biscuit",
+      "species": "dog",
+      "breed": "Golden Retriever",
+      "age_months": 36,
+      "energy_level": "high",
+      "medical_notes": ["arthritis"],
+      "tasks": [
+        {
+          "task_id": "a1b2c3-...",
+          "title": "Arthritis medication",
+          "category": "medication",
+          "duration_minutes": 5,
+          "priority": "critical",
+          "time_slot_preference": "08:00",
+          "is_recurring": true,
+          "recurrence_pattern": "daily",
+          "due_date": "2026-06-23",
+          "is_completed": false
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+## 🏆 Priority-Based Scheduling
+
+The scheduler always orders by **priority first**, then uses the time-slot preference as a secondary sort for the display timeline. Tasks added in any order are always scheduled critical → high → medium → low.
+
+### CLI demo (`python main.py`)
+
+Tasks are queued in reverse-priority order (low → medium → high → critical) to show the scheduler overrides insertion order:
+
+```
+Priority-Based Scheduling Demo
+──────────────────────────────────────────────────────
+  Tasks added in reverse-priority order (low first, critical last):
+    queued: [low     ] Grooming
+    queued: [medium  ] Play session
+    queued: [high    ] Morning walk
+    queued: [critical] Medication
+
+  Scheduler output (priority-first, then chronological):
+    00:00  [critical] Medication   (5min)   ← scheduled first despite being queued last
+    00:05  [high    ] Morning walk (25min)
+    00:30  [medium  ] Play session (20min)
+    00:50  [low     ] Grooming     (30min)  ← scheduled last despite being queued first
+```
+
+The start times (`00:00`, `00:05`, etc.) reflect the sequential packing order driven by priority. The `sort_by_time()` call then reorders the display by the tasks' preferred clock slots (`08:00`, `09:00`, `11:00`, `10:00`) for a readable timeline view in the UI.

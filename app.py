@@ -1,6 +1,14 @@
 from pawpal_system import DailyScheduler, Owner, Pet, Task
 import streamlit as st
 from datetime import date
+from pathlib import Path
+
+DATA_FILE = Path(__file__).parent / "data.json"
+
+
+def _save(owner: Owner) -> None:
+    """Persist the owner graph to data.json after every mutation."""
+    owner.save_to_json(DATA_FILE)
 
 st.set_page_config(
     page_title="PawPal+ | Pet Care Planner",
@@ -69,7 +77,14 @@ def _reset():
 
 
 if "owner" not in st.session_state:
-    _reset()
+    if DATA_FILE.exists():
+        try:
+            st.session_state.owner = Owner.load_from_json(DATA_FILE)
+            st.session_state.sched_data = None
+        except Exception:
+            _reset()          # corrupt file → fall back to defaults
+    else:
+        _reset()
 
 owner: Owner = st.session_state.owner
 
@@ -90,6 +105,10 @@ with st.sidebar:
     st.markdown("---")
     st.metric("Pets", len(owner.get_all_pets()))
     st.metric("Tasks", sum(len(p.get_tasks()) for p in owner.get_all_pets()))
+    st.markdown("---")
+    # Persist any sidebar edits (name, email, budget) immediately
+    _save(owner)
+
     st.markdown("---")
     if st.button("🔄 Reset to demo data"):
         _reset()
@@ -282,6 +301,7 @@ with tab2:
             else:
                 med_list = [m.strip() for m in p_meds.split(",") if m.strip()]
                 owner.add_pet(Pet(p_name, p_species, p_breed, int(p_age), p_energy, med_list))
+                _save(owner)
                 st.success(f"{p_name} registered!")
                 st.rerun()
 
@@ -301,6 +321,7 @@ with tab2:
                 with col_del:
                     if st.button(f"Remove {pet.name}", key=f"rp_{pet.pet_id}"):
                         owner.remove_pet(pet.pet_id)
+                        _save(owner)
                         st.rerun()
                 with col_tasks:
                     tasks = pet.get_tasks()
@@ -313,6 +334,7 @@ with tab2:
                                 with td:
                                     if st.button("🗑️", key=f"dt_{t.task_id}"):
                                         pet.remove_task(t.task_id)
+                                        _save(owner)
                                         st.rerun()
 
 
@@ -355,5 +377,6 @@ with tab3:
                         recurrence_pattern=t_pattern if t_recurring else None,
                         due_date=date.today() if t_recurring else None,
                     ))
+                    _save(owner)
                     st.success(f"Added '{t_title}' to {selected_name}'s plan.")
                     st.rerun()

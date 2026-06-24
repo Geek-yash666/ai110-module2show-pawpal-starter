@@ -1,11 +1,14 @@
 """
-PawPal+ demo script — exercises all Phase 4 features in the terminal.
+PawPal+ demo script — exercises scheduling, persistence, and priority ordering.
 
 Run:  python main.py
 """
 
 from datetime import date
+from pathlib import Path
 from pawpal_system import DailyScheduler, Owner, Pet, Task
+
+DATA_FILE = Path(__file__).parent / "data.json"
 
 
 # ---------------------------------------------------------------------------
@@ -141,6 +144,48 @@ def main() -> None:
     print_section("Full Decision Log")
     for line in scheduler.get_reasoning():
         print(f"  {line}")
+
+    # ------------------------------------------------------------------
+    # Priority-Based Scheduling demo
+    # ------------------------------------------------------------------
+    print_section("Priority-Based Scheduling Demo")
+    print("  Tasks added in reverse-priority order (low first, critical last):")
+
+    demo_owner = Owner("Demo", "demo@test.com", available_hours_per_day=2.0)
+    demo_pet   = Pet("Rex", "dog", "Labrador", 24)
+    demo_pet.add_task(Task("Grooming",    "grooming",   30, priority="low",      time_slot_preference="10:00"))
+    demo_pet.add_task(Task("Play session","enrichment", 20, priority="medium",   time_slot_preference="11:00"))
+    demo_pet.add_task(Task("Morning walk","walk",        25, priority="high",     time_slot_preference="09:00"))
+    demo_pet.add_task(Task("Medication",  "medication",  5, priority="critical",  time_slot_preference="08:00"))
+    demo_owner.add_pet(demo_pet)
+
+    for t in demo_pet.get_tasks():
+        print(f"    queued: [{t.priority:8s}] {t.title}")
+
+    demo_sched = DailyScheduler(demo_owner, date.today())
+    demo_sched.load_from_owner()
+    plan = demo_sched.generate_schedule()
+
+    print("\n  Scheduler output (priority-first, then chronological):")
+    for entry in demo_sched.sort_by_time(plan):
+        t = entry["task"]
+        h, m = divmod(entry["start_minute"], 60)
+        print(f"    {h:02d}:{m:02d}  [{t.priority:8s}] {t.title} ({t.duration_minutes}min)")
+
+    # ------------------------------------------------------------------
+    # Persistence demo
+    # ------------------------------------------------------------------
+    print_section("Persistence Demo (save_to_json / load_from_json)")
+    owner.save_to_json(DATA_FILE)
+    print(f"  Saved to {DATA_FILE}")
+
+    restored = Owner.load_from_json(DATA_FILE)
+    print(f"  Loaded:  owner='{restored.name}', "
+          f"pets={[p.name for p in restored.pets]}, "
+          f"tasks={sum(len(p.tasks) for p in restored.pets)}")
+    assert restored.name == owner.name
+    assert len(restored.pets) == len(owner.pets)
+    print("  Round-trip check: PASSED")
 
 
 if __name__ == "__main__":

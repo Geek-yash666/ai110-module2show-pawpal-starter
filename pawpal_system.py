@@ -10,8 +10,10 @@ Architecture: four dataclasses with clean separation of concerns.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from datetime import date, timedelta
+from pathlib import Path
 from typing import List, Dict, Optional, Any
 import uuid
 
@@ -105,6 +107,42 @@ class Task:
             due_date=base + delta,
         )
 
+    # ------------------------------------------------------------------
+    # Serialization
+    # ------------------------------------------------------------------
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to a JSON-safe dict. All fields are preserved."""
+        return {
+            "task_id": self.task_id,
+            "title": self.title,
+            "category": self.category,
+            "duration_minutes": self.duration_minutes,
+            "priority": self.priority,
+            "time_slot_preference": self.time_slot_preference,
+            "is_recurring": self.is_recurring,
+            "recurrence_pattern": self.recurrence_pattern,
+            "due_date": self.due_date.isoformat() if self.due_date else None,
+            "is_completed": self.is_completed,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "Task":
+        """Reconstruct a Task from a previously serialized dict."""
+        raw_date = data.get("due_date")
+        return cls(
+            title=data["title"],
+            category=data["category"],
+            duration_minutes=data["duration_minutes"],
+            priority=data.get("priority", "medium"),
+            time_slot_preference=data.get("time_slot_preference", "anytime"),
+            is_recurring=data.get("is_recurring", False),
+            recurrence_pattern=data.get("recurrence_pattern"),
+            due_date=date.fromisoformat(raw_date) if raw_date else None,
+            task_id=data.get("task_id", str(uuid.uuid4())),
+            is_completed=data.get("is_completed", False),
+        )
+
 
 # ---------------------------------------------------------------------------
 # Pet
@@ -158,6 +196,41 @@ class Pet:
         """Return a shallow copy of this pet's task list."""
         return list(self.tasks)
 
+    # ------------------------------------------------------------------
+    # Serialization
+    # ------------------------------------------------------------------
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to a JSON-safe dict including all owned tasks."""
+        return {
+            "pet_id": self.pet_id,
+            "name": self.name,
+            "species": self.species,
+            "breed": self.breed,
+            "age_months": self.age_months,
+            "energy_level": self.energy_level,
+            "medical_notes": self.medical_notes,
+            "preferences": self.preferences,
+            "tasks": [t.to_dict() for t in self.tasks],
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "Pet":
+        """Reconstruct a Pet (and its tasks) from a previously serialized dict."""
+        pet = cls(
+            name=data["name"],
+            species=data["species"],
+            breed=data["breed"],
+            age_months=data["age_months"],
+            energy_level=data.get("energy_level", "medium"),
+            medical_notes=data.get("medical_notes", []),
+            preferences=data.get("preferences", {}),
+            pet_id=data.get("pet_id", str(uuid.uuid4())),
+        )
+        for task_data in data.get("tasks", []):
+            pet.tasks.append(Task.from_dict(task_data))
+        return pet
+
 
 # ---------------------------------------------------------------------------
 # Owner
@@ -190,6 +263,55 @@ class Owner:
     def get_all_tasks(self) -> List[Dict[str, Any]]:
         """Aggregate every task across all pets as {task, pet} dicts."""
         return [{"task": t, "pet": p} for p in self.pets for t in p.tasks]
+
+    # ------------------------------------------------------------------
+    # Serialization / persistence
+    # ------------------------------------------------------------------
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize the full owner graph (owner → pets → tasks) to a dict."""
+        return {
+            "owner_id": self.owner_id,
+            "name": self.name,
+            "email": self.email,
+            "available_hours_per_day": self.available_hours_per_day,
+            "pets": [p.to_dict() for p in self.pets],
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "Owner":
+        """Reconstruct a full Owner graph from a previously serialized dict."""
+        owner = cls(
+            name=data["name"],
+            email=data["email"],
+            available_hours_per_day=data.get("available_hours_per_day", 4.0),
+            owner_id=data.get("owner_id", str(uuid.uuid4())),
+        )
+        for pet_data in data.get("pets", []):
+            owner.pets.append(Pet.from_dict(pet_data))
+        return owner
+
+    def save_to_json(self, filepath: str | Path) -> None:
+        """
+        Persist the full owner graph (owner → pets → tasks) to a JSON file.
+
+        Creates or overwrites the file at *filepath*. All IDs, completion
+        states, due dates, and recurrence settings are preserved so the
+        object graph can be reconstructed exactly via load_from_json().
+        """
+        Path(filepath).write_text(
+            json.dumps(self.to_dict(), indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+    @classmethod
+    def load_from_json(cls, filepath: str | Path) -> "Owner":
+        """
+        Load and reconstruct an Owner graph from a JSON file written by
+        save_to_json(). Raises FileNotFoundError if the file does not exist.
+        """
+        data = json.loads(Path(filepath).read_text(encoding="utf-8"))
+        return cls.from_dict(data)
 
 
 # ---------------------------------------------------------------------------
