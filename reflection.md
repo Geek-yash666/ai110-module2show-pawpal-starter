@@ -4,13 +4,21 @@
 
 **a. Initial design**
 
-- Briefly describe your initial UML design.
-- What classes did you include, and what responsibilities did you assign to each?
+- **Three Core Actions Identifed:**
+  1. **Profile Management (Owner & Pet Onboarding)**: Register owners with specific availability limits and pets with unique attributes (species, breed, age, energy levels, and medical conditions/requirements).
+  2. **Task Creation & Configuration**: Add or edit tasks with parameters including category, duration, priority level, frequency (recurrence), and time-of-day preferences.
+  3. **Automated Daily Schedule Generation & Conflict Resolution**: Process the pool of tasks to output a structured daily agenda within the owner's constraints, providing clear text reasoning for prioritization or deferral decisions.
+
+- **Initial UML Design Details:**
+  - `Owner`: Manages the profile metadata of the human caregiver (e.g., name, contact details, total daily availability) and maintains the list of associated pets.
+  - `Pet`: Holds specific, detailed information about each pet (e.g., species, breed, age, energy level, medical needs, activity preferences) which influences task selection and sequencing.
+  - `Task`: Represents an individual unit of care (e.g., walk, medicine, feeding) with its duration, priority, preference settings, recurrence, and execution/completion state.
+  - `DailyScheduler`: Serves as the core engine responsible for compiling tasks, enforcing owner constraints (like maximum daily care time), ordering by priority/urgency, resolving timing conflicts, and outputting the final daily agenda with natural language reasoning logs.
+
 
 **b. Design changes**
 
-- Did your design change during implementation?
-- If yes, describe at least one change and why you made it.
+Yes. During implementation `DailyScheduler` required an explicit `task_pool` collection (a list of `{task, pet}` dicts) that the initial UML omitted. Without it, `add_task_to_pool` had nowhere to store candidates before `generate_schedule` ran. Adding `task_pool` made the staged "pool → schedule" flow explicit and allowed duplicate-task detection at insertion time. The UML (`uml_draft.mmd`) was updated to include this attribute.
 
 ---
 
