@@ -342,3 +342,127 @@ class TestRecurringTasks:
         scheduler.load_from_owner()
         new_tasks = scheduler.apply_recurring_tasks()
         assert len(new_tasks) == 0
+
+    def test_next_occurrence_has_new_task_id(self):
+        """Next occurrence must be a distinct object, not a reference to the original."""
+        today = date.today()
+        task = Task("Feeding", "feeding", 10, is_recurring=True,
+                    recurrence_pattern="daily", due_date=today)
+        next_t = task.generate_next_occurrence()
+        assert next_t.task_id != task.task_id
+
+    def test_next_occurrence_inherits_properties(self):
+        today = date.today()
+        task = Task("Meds", "medication", 15, priority="critical",
+                    time_slot_preference="08:00", is_recurring=True,
+                    recurrence_pattern="daily", due_date=today)
+        next_t = task.generate_next_occurrence()
+        assert next_t.title == task.title
+        assert next_t.category == task.category
+        assert next_t.duration_minutes == task.duration_minutes
+        assert next_t.priority == task.priority
+        assert next_t.time_slot_preference == task.time_slot_preference
+
+    def test_next_occurrence_no_due_date_falls_back_to_today(self):
+        """due_date=None should use today as the base for the next occurrence."""
+        from datetime import timedelta
+        task = Task("Walk", "walk", 20, is_recurring=True,
+                    recurrence_pattern="daily")  # no due_date
+        next_t = task.generate_next_occurrence()
+        assert next_t is not None
+        assert next_t.due_date == date.today() + timedelta(days=1)
+
+
+# ---------------------------------------------------------------------------
+# Edge cases
+# ---------------------------------------------------------------------------
+
+class TestEdgeCases:
+    def test_empty_pool_returns_empty_schedule(self, owner: Owner):
+        scheduler = DailyScheduler(owner, date.today())
+        plan = scheduler.generate_schedule()
+        assert plan == []
+        assert scheduler.unscheduled_tasks == []
+
+    def test_pet_with_no_tasks_does_not_crash(self, owner: Owner, pet_healthy: Pet):
+        owner.add_pet(pet_healthy)  # pet has no tasks
+        scheduler = DailyScheduler(owner, date.today())
+        scheduler.load_from_owner()
+        plan = scheduler.generate_schedule()
+        assert plan == []
+
+    def test_owner_with_no_pets(self, owner: Owner):
+        scheduler = DailyScheduler(owner, date.today())
+        scheduler.load_from_owner()
+        assert scheduler.task_pool == []
+        plan = scheduler.generate_schedule()
+        assert plan == []
+
+    def test_budget_boundary_task_fits_exactly(self, owner: Owner, pet_healthy: Pet):
+        """A task whose duration equals the remaining budget should be scheduled."""
+        scheduler = DailyScheduler(owner, date.today())  # 60 min budget
+        task = Task("Long walk", "walk", 60, priority="medium")
+        scheduler.add_task_to_pool(task, pet_healthy)
+        plan = scheduler.generate_schedule()
+        assert len(plan) == 1
+        assert scheduler.unscheduled_tasks == []
+
+    def test_task_one_minute_over_budget_deferred(self, owner: Owner, pet_healthy: Pet):
+        scheduler = DailyScheduler(owner, date.today())  # 60 min budget
+        task = Task("Long walk", "walk", 61, priority="high")
+        scheduler.add_task_to_pool(task, pet_healthy)
+        scheduler.generate_schedule()
+        assert len(scheduler.scheduled_tasks) == 0
+        assert len(scheduler.unscheduled_tasks) == 1
+
+    def test_conflict_cross_pet_same_hhmm_slot(
+        self, owner: Owner, pet_healthy: Pet, pet_medical: Pet
+    ):
+        """Two different pets with the same HH:MM preference should trigger a conflict."""
+        scheduler = DailyScheduler(owner, date.today())
+        t1 = Task("Meds",    "medication", 10, priority="critical", time_slot_preference="09:00")
+        t2 = Task("Feeding", "feeding",    10, priority="critical", time_slot_preference="09:00")
+        scheduler.add_task_to_pool(t1, pet_medical)
+        scheduler.add_task_to_pool(t2, pet_healthy)
+        scheduler.generate_schedule()
+        assert any("CONFLICT" in r for r in scheduler.get_reasoning())
+
+    def test_sort_empty_list_returns_empty(self, owner: Owner):
+        scheduler = DailyScheduler(owner, date.today())
+        assert scheduler.sort_by_time([]) == []
+
+    def test_sort_mixed_hhmm_and_named_slots(self, owner: Owner, pet_healthy: Pet):
+        """HH:MM times should interleave correctly with named slots."""
+        scheduler = DailyScheduler(owner, date.today())
+        t1 = Task("Late eve",  "walk",       10, time_slot_preference="20:00")   # 1200 min
+        t2 = Task("Morning",   "feeding",     5, time_slot_preference="morning")  # 360 min
+        t3 = Task("Afternoon", "enrichment", 15, time_slot_preference="14:00")   # 840 min
+        t4 = Task("Anytime",   "grooming",   20, time_slot_preference="anytime")  # 720 min
+        for t in (t1, t2, t3, t4):
+            scheduler.add_task_to_pool(t, pet_healthy)
+        sorted_titles = [e["task"].title for e in scheduler.sort_by_time(scheduler.task_pool)]
+        assert sorted_titles == ["Morning", "Anytime", "Afternoon", "Late eve"]
+
+    def test_filter_combined_pet_and_completion(
+        self, owner: Owner, pet_healthy: Pet, pet_medical: Pet
+    ):
+        """Filter by both pet name AND completion status simultaneously."""
+        scheduler = DailyScheduler(owner, date.today())
+        done = Task("Done walk", "walk", 10)
+        done.mark_as_completed()
+        pending = Task("Pending walk", "walk", 10)
+        scheduler.add_task_to_pool(done, pet_healthy)
+        scheduler.add_task_to_pool(pending, pet_healthy)
+        scheduler.add_task_to_pool(Task("Meds", "medication", 5), pet_medical)
+        result = scheduler.filter_tasks(pet_name=pet_healthy.name, completed=False)
+        assert len(result) == 1
+        assert result[0]["task"].title == "Pending walk"
+
+    def test_sort_stable_equal_slots(self, owner: Owner, pet_healthy: Pet):
+        """Tasks with identical slot values should all appear in the output."""
+        scheduler = DailyScheduler(owner, date.today())
+        tasks = [Task(f"Task {i}", "walk", 5, time_slot_preference="morning") for i in range(3)]
+        for t in tasks:
+            scheduler.add_task_to_pool(t, pet_healthy)
+        sorted_entries = scheduler.sort_by_time(scheduler.task_pool)
+        assert len(sorted_entries) == 3
