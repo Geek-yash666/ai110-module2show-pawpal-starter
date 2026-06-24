@@ -47,11 +47,29 @@ pip install -r requirements.txt
 Paste a sample of your app's CLI or Streamlit output here so a reader can see what a generated plan looks like:
 
 ```
-# e.g.:
-# Daily plan for Biscuit (Golden Retriever):
-#   08:00 — Morning walk (30 min) [priority: high]
-#   09:00 — Feeding (10 min) [priority: high]
-#   ...
+Biscuit (dog, Golden Retriever) | Age: 36mo | Energy: high | Medical notes: arthritis
+Mochi (cat, Siamese) | Age: 18mo | Energy: medium | Medical notes: None
+
+======================================================
+  Today's Schedule — 2026-06-23
+  Owner: Jordan (budget: 120 min)
+======================================================
+  00:00  [critical] Arthritis medication (5min) — Biscuit
+  00:05  [critical] Feeding (10min) — Mochi
+  00:15  [high    ] Morning walk (30min) — Biscuit
+  00:45  [medium  ] Evening walk (25min) — Biscuit
+  01:10  [medium  ] Enrichment play (20min) — Mochi
+
+  Deferred (1):
+    - Grooming session (45min, low)
+
+  Reasoning:
+    SCHEDULED 'Arthritis medication' [Biscuit] priority=critical, 5min, slot=morning, starts at min 0.
+    SCHEDULED 'Feeding' [Mochi] priority=critical, 10min, slot=morning, starts at min 5.
+    SCHEDULED 'Morning walk' [Biscuit] priority=high, 30min, slot=morning, starts at min 15.
+    SCHEDULED 'Evening walk' [Biscuit] priority=medium, 25min, slot=evening, starts at min 45.
+    SCHEDULED 'Enrichment play' [Mochi] priority=medium, 20min, slot=anytime, starts at min 70.
+    DEFERRED  'Grooming session' [Biscuit]: needs 135 min total, limit is 120 min.
 ```
 
 ## 🧪 Testing PawPal+
