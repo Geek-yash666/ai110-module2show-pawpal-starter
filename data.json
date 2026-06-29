@@ -1,7 +1,130 @@
 {
-  "owner_id": "7bcc2bcb-9b34-41b5-b3f4-25f90bccdce7",
+  "owner_id": "5bf7de37-2546-4fae-9fb5-0b6336420242",
   "name": "Jordan",
   "email": "jordan@pawpal.io",
-  "available_hours_per_day": 4.5,
-  "pets": []
+  "available_hours_per_day": 2.0,
+  "pets": [
+    {
+      "pet_id": "8e81873b-faa7-4e8c-870b-2e93c53760ee",
+      "name": "Biscuit",
+      "species": "dog",
+      "breed": "Golden Retriever",
+      "age_months": 36,
+      "energy_level": "high",
+      "medical_notes": [
+        "arthritis"
+      ],
+      "preferences": {},
+      "tasks": [
+        {
+          "task_id": "3ccced5c-a1a8-4ca3-b235-f69dd04ccfd8",
+          "title": "Morning walk",
+          "category": "walk",
+          "duration_minutes": 30,
+          "priority": "high",
+          "time_slot_preference": "09:00",
+          "is_recurring": false,
+          "recurrence_pattern": null,
+          "due_date": null,
+          "is_completed": false
+        },
+        {
+          "task_id": "36d66e2c-0394-4256-9234-9940a26eb05f",
+          "title": "Evening walk",
+          "category": "walk",
+          "duration_minutes": 25,
+          "priority": "medium",
+          "time_slot_preference": "18:30",
+          "is_recurring": false,
+          "recurrence_pattern": null,
+          "due_date": null,
+          "is_completed": false
+        },
+        {
+          "task_id": "949ee792-815e-4e1c-80fb-21feae7dda76",
+          "title": "Grooming",
+          "category": "grooming",
+          "duration_minutes": 45,
+          "priority": "low",
+          "time_slot_preference": "anytime",
+          "is_recurring": false,
+          "recurrence_pattern": null,
+          "due_date": null,
+          "is_completed": false
+        },
+        {
+          "task_id": "315c4d1f-902c-4102-b091-c07171cb5e74",
+          "title": "Arthritis medication",
+          "category": "medication",
+          "duration_minutes": 5,
+          "priority": "critical",
+          "time_slot_preference": "08:00",
+          "is_recurring": true,
+          "recurrence_pattern": "daily",
+          "due_date": "2026-07-08",
+          "is_completed": true
+        },
+        {
+          "task_id": "30942aa4-2fbb-4d03-a5b9-5527c15089fe",
+          "title": "Arthritis medication",
+          "category": "medication",
+          "duration_minutes": 5,
+          "priority": "critical",
+          "time_slot_preference": "08:00",
+          "is_recurring": true,
+          "recurrence_pattern": "daily",
+          "due_date": "2026-07-09",
+          "is_completed": false
+        }
+      ]
+    },
+    {
+      "pet_id": "cee8937a-692e-403d-b888-1ccaaf36185c",
+      "name": "Mochi",
+      "species": "cat",
+      "breed": "Siamese",
+      "age_months": 18,
+      "energy_level": "medium",
+      "medical_notes": [],
+      "preferences": {},
+      "tasks": [
+        {
+          "task_id": "2860e0ff-065c-41cb-bdaa-181268d54c82",
+          "title": "Breakfast feeding",
+          "category": "feeding",
+          "duration_minutes": 10,
+          "priority": "critical",
+          "time_slot_preference": "08:00",
+          "is_recurring": true,
+          "recurrence_pattern": "daily",
+          "due_date": "2026-06-29",
+          "is_completed": true
+        },
+        {
+          "task_id": "79046c5e-f796-4a2b-961c-421ae3470bbb",
+          "title": "Enrichment play",
+          "category": "enrichment",
+          "duration_minutes": 20,
+          "priority": "medium",
+          "time_slot_preference": "15:00",
+          "is_recurring": false,
+          "recurrence_pattern": null,
+          "due_date": null,
+          "is_completed": false
+        },
+        {
+          "task_id": "7ea9a6af-0537-4d21-a4ab-b9220836a3a2",
+          "title": "Breakfast feeding",
+          "category": "feeding",
+          "duration_minutes": 10,
+          "priority": "critical",
+          "time_slot_preference": "08:00",
+          "is_recurring": true,
+          "recurrence_pattern": "daily",
+          "due_date": "2026-06-30",
+          "is_completed": false
+        }
+      ]
+    }
+  ]
 }

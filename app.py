@@ -11,6 +11,45 @@ def _save(owner: Owner) -> None:
     owner.save_to_json(DATA_FILE)
 
 
+def _regen_schedule(owner: Owner) -> None:
+    """Rebuild and store the schedule in session state."""
+    scheduler = DailyScheduler(owner, date.today())
+    scheduler.load_from_owner()
+    scheduler.generate_schedule()
+    st.session_state.sched_data = {
+        "scheduler": scheduler,
+        "scheduled": scheduler.scheduled_tasks,
+        "deferred":  scheduler.unscheduled_tasks,
+        "reasoning": scheduler.get_reasoning(),
+        "budget":    scheduler.daily_time_limit_minutes,
+    }
+
+
+def _purge_old_recurring(owner: Owner) -> None:
+    """Remove stale completed recurring-task copies from every pet.
+
+    Keeps at most one pending instance per (title, recurrence_pattern) group
+    and drops all completed historical copies.  Prevents unbounded accumulation
+    when the user clicks Done on a recurring task across multiple sessions.
+    """
+    for pet in owner.get_all_pets():
+        seen_pending: set[str] = set()
+        to_remove: list[str] = []
+        for task in pet.get_tasks():
+            if not task.is_recurring:
+                continue
+            key = (task.title, task.recurrence_pattern)
+            if task.is_completed:
+                to_remove.append(task.task_id)
+            elif key in seen_pending:
+                # Duplicate pending occurrence — keep only earliest due_date
+                to_remove.append(task.task_id)
+            else:
+                seen_pending.add(key)
+        for tid in to_remove:
+            pet.remove_task(tid)
+
+
 def clean_html(html: str) -> str:
     """Helper to minify HTML/SVG strings, preventing Streamlit/Markdown code-block parsing bugs."""
     return "".join(line.strip() for line in html.splitlines())
@@ -264,13 +303,22 @@ st.markdown(
 
     /* Global inputs/text fields rounded SOTA overrides */
     .stApp input[type="text"], .stApp input[type="number"], .stApp textarea {
-        border-radius: 16px !important;
-        border: 2px solid #FFF0E6 !important;
+        border-radius: 14px !important;
+        border: 2px solid #FFE5D9 !important;
         background-color: #FFFDFB !important;
         font-family: 'Quicksand', sans-serif !important;
         color: #4A3E3D !important;
-        padding: 10px 16px !important;
+        padding: 10px 14px !important;
+        height: 44px !important;
+        min-height: 44px !important;
+        line-height: 1.4 !important;
+        box-sizing: border-box !important;
+        font-size: 0.95rem !important;
         transition: all 0.25s ease !important;
+    }
+    /* Number input spinner container — match same height */
+    div[data-testid="stNumberInput"] > div {
+        min-height: 44px !important;
     }
     .stApp input[type="text"]:focus, .stApp input[type="number"]:focus, .stApp textarea:focus {
         border-color: #FF7A60 !important;
@@ -280,13 +328,23 @@ st.markdown(
 
     /* Style selectbox input containers globally */
     div[data-baseweb="select"] > div {
-        border-radius: 16px !important;
-        border: 2px solid #FFF0E6 !important;
+        border-radius: 14px !important;
+        border: 2px solid #FFE5D9 !important;
         background-color: #FFFDFB !important;
         font-family: 'Quicksand', sans-serif !important;
         color: #4A3E3D !important;
-        padding: 2px 8px !important;
+        padding: 0 14px !important;
+        min-height: 44px !important;
+        height: 44px !important;
+        display: flex !important;
+        align-items: center !important;
+        box-sizing: border-box !important;
+        font-size: 0.95rem !important;
         transition: all 0.25s ease !important;
+    }
+    div[data-baseweb="select"] > div > div {
+        overflow: visible !important;
+        line-height: 1.5 !important;
     }
     div[data-baseweb="select"]:focus-within > div, div[data-baseweb="select"]:hover > div {
         border-color: #FF7A60 !important;
@@ -475,24 +533,31 @@ st.markdown(
     .progress-container {
         background: #FFF0E6;
         border-radius: 50px;
-        height: 28px;
+        height: 22px;
         position: relative;
         overflow: hidden;
         border: 2px solid #FFE5D9;
-        margin: 15px 0;
+        margin: 8px 0 4px 0;
     }
     .progress-bar-fill {
         height: 100%;
         background: linear-gradient(90deg, #FF7A60 0%, #FF9F43 100%);
         border-radius: 50px;
         transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        min-width: 6px;
+    }
+    .progress-label {
         display: flex;
+        justify-content: space-between;
         align-items: center;
-        justify-content: flex-end;
-        padding-right: 15px;
-        color: white;
-        font-size: 0.9em;
-        font-weight: bold;
+        font-size: 0.85em;
+        color: #8B7775;
+        margin-top: 4px;
+        font-family: 'Quicksand', sans-serif;
+    }
+    .progress-label .pct {
+        font-weight: 700;
+        color: #FF7A60;
     }
     </style>
     """),
@@ -535,10 +600,12 @@ def _reset():
 if "owner" not in st.session_state:
     if DATA_FILE.exists():
         try:
-            st.session_state.owner = Owner.load_from_json(DATA_FILE)
+            loaded = Owner.load_from_json(DATA_FILE)
+            _purge_old_recurring(loaded)
+            st.session_state.owner = loaded
             st.session_state.sched_data = None
         except Exception:
-            _reset()          # corrupt file → fall back to defaults
+            _reset()
     else:
         _reset()
 
@@ -617,18 +684,8 @@ with tab1:
         if not sched:
             st.markdown(get_empty_schedule_svg(), unsafe_allow_html=True)
             st.markdown(clean_html('<div class="primary-btn-marker"></div>'), unsafe_allow_html=True)
-            if st.button("🚀 Generate Today's Care Plan", use_container_width=True):
-                scheduler = DailyScheduler(owner, date.today())
-                scheduler.load_from_owner()
-                scheduler.generate_schedule()
-
-                st.session_state.sched_data = {
-                    "scheduler": scheduler,
-                    "scheduled": scheduler.scheduled_tasks,
-                    "deferred":  scheduler.unscheduled_tasks,
-                    "reasoning": scheduler.get_reasoning(),
-                    "budget":    scheduler.daily_time_limit_minutes,
-                }
+            if st.button("Generate Today's Care Plan", use_container_width=True):
+                _regen_schedule(owner)
                 st.rerun()
 
         if sched:
@@ -639,12 +696,17 @@ with tab1:
             time_used = sum(entry["task"].duration_minutes for entry in sched["scheduled"])
             percentage = min(100, int((time_used / time_limit) * 100)) if time_limit > 0 else 0
             
+            pct_width = max(percentage, 3) if percentage > 0 else 0
+            remaining = time_limit - time_used
             st.markdown(clean_html(f"""
-            <h4 style='font-family: Fredoka, sans-serif; color: #4A3E3D; margin-bottom: 5px;'>Daily Time Budget Utilization</h4>
+            <h4 style='font-family: Fredoka, sans-serif; color: #4A3E3D; margin-bottom: 2px;'>Daily Time Budget</h4>
             <div class="progress-container">
-                <div class="progress-bar-fill" style="width: {percentage}%;">
-                    {time_used} / {time_limit} min ({percentage}%)
-                </div>
+                <div class="progress-bar-fill" style="width: {pct_width}%;"></div>
+            </div>
+            <div class="progress-label">
+                <span>{time_used} min used</span>
+                <span class="pct">{percentage}%</span>
+                <span>{remaining} min left</span>
             </div>
             """), unsafe_allow_html=True)
 
@@ -741,25 +803,41 @@ with tab1:
                             )
                         with col_action:
                             st.markdown(clean_html('<div class="done-btn-marker" style="margin-top: 25px;"></div>'), unsafe_allow_html=True)
-                            if st.button("Done", key=f"comp_{task.task_id}"):
+                            if st.button("✅ Done", key=f"comp_{task.task_id}"):
                                 task.mark_as_completed()
                                 if task.is_recurring:
-                                    next_task = task.generate_next_occurrence()
-                                    if next_task:
-                                        pet.add_task(next_task)
+                                    # Only add next occurrence if no pending copy exists
+                                    key = (task.title, task.recurrence_pattern)
+                                    has_pending = any(
+                                        (t.title, t.recurrence_pattern) == key
+                                        and not t.is_completed
+                                        for t in pet.get_tasks()
+                                        if t.task_id != task.task_id
+                                    )
+                                    if not has_pending:
+                                        next_task = task.generate_next_occurrence()
+                                        if next_task:
+                                            pet.add_task(next_task)
+                                    # Remove completed historical copies to keep list clean
+                                    stale = [
+                                        t.task_id for t in pet.get_tasks()
+                                        if t.title == task.title and t.is_recurring
+                                        and t.is_completed and t.task_id != task.task_id
+                                    ]
+                                    for tid in stale:
+                                        pet.remove_task(tid)
                                 _save(owner)
-                                
-                                # Regenerate schedule
-                                scheduler = DailyScheduler(owner, date.today())
-                                scheduler.load_from_owner()
-                                scheduler.generate_schedule()
-                                st.session_state.sched_data = {
-                                    "scheduler": scheduler,
-                                    "scheduled": scheduler.scheduled_tasks,
-                                    "deferred":  scheduler.unscheduled_tasks,
-                                    "reasoning": scheduler.get_reasoning(),
-                                    "budget":    scheduler.daily_time_limit_minutes,
-                                }
+                                _regen_schedule(owner)
+                                st.rerun()
+                            st.markdown(clean_html('<div class="trash-btn-marker"></div>'), unsafe_allow_html=True)
+                            if st.button("⏭ Skip", key=f"skip_{task.task_id}"):
+                                # Manually defer: remove from scheduled, add to deferred list
+                                sched["scheduled"] = [
+                                    e for e in sched["scheduled"]
+                                    if e["task"].task_id != task.task_id
+                                ]
+                                sched["deferred"] = sched.get("deferred", []) + [task]
+                                st.session_state.sched_data = sched
                                 st.rerun()
 
             with col_deferred:
@@ -851,16 +929,7 @@ with tab1:
 
             st.markdown(clean_html('<div class="recalc-btn-marker"></div>'), unsafe_allow_html=True)
             if st.button("Recalculate & Sync Plan"):
-                scheduler = DailyScheduler(owner, date.today())
-                scheduler.load_from_owner()
-                scheduler.generate_schedule()
-                st.session_state.sched_data = {
-                    "scheduler": scheduler,
-                    "scheduled": scheduler.scheduled_tasks,
-                    "deferred":  scheduler.unscheduled_tasks,
-                    "reasoning": scheduler.get_reasoning(),
-                    "budget":    scheduler.daily_time_limit_minutes,
-                }
+                _regen_schedule(owner)
                 st.rerun()
 
 
@@ -973,26 +1042,28 @@ with tab3:
         st.info("Register a pet first under **Manage Pets**.")
     else:
         pet_map = {p.name: p for p in pets}
-        selected_name = st.selectbox("Select Pet *", list(pet_map))
+        selected_name = st.selectbox("Assign to Pet", list(pet_map), key="pet_select_form")
         selected_pet  = pet_map[selected_name]
 
-        st.markdown("<div class='custom-card pet-card' style='background: #FFFFFF;'>", unsafe_allow_html=True)
         with st.form("add_task_form", clear_on_submit=True):
-            c1, c2 = st.columns(2)
-            with c1:
-                t_title    = st.text_input("Task Title *", placeholder="e.g. Afternoon feeding")
-                t_category = st.selectbox("Category *", ["feeding","walk","medication","grooming","enrichment","other"])
-                t_duration = st.number_input("Duration (min) *", 1, 240, 20, step=5)
-            with c2:
-                t_priority = st.selectbox("Priority *", ["critical","high","medium","low"], index=2)
-                t_slot     = st.selectbox("Time Preference *",
-                                          ["morning","anytime","evening","08:00","09:00",
-                                           "12:00","15:00","18:00","18:30"], index=1)
-                t_recurring= st.checkbox("Recurring task?")
-                t_pattern  = st.selectbox("Recurrence", ["daily","weekly"])
-            
+            col1, col2 = st.columns(2, gap="large")
+            with col1:
+                t_title = st.text_input("Task Title", placeholder="e.g. Afternoon feeding", key="task_title")
+                t_category = st.selectbox("Category", ["feeding","walk","medication","grooming","enrichment","other"], key="task_cat")
+                t_slot = st.selectbox("Time Preference",
+                                      ["morning","anytime","evening","08:00","09:00",
+                                       "12:00","15:00","18:00","18:30"], index=1, key="task_slot")
+            with col2:
+                t_duration = st.number_input("Duration (min)", 1, 240, 20, step=5, key="task_dur")
+                t_priority = st.selectbox("Priority", ["critical","high","medium","low"], index=2, key="task_pri")
+                t_recurring = st.checkbox("Recurring daily?", key="task_recur")
+                if t_recurring:
+                    t_pattern = st.selectbox("Pattern", ["daily","weekly"], index=0, key="task_pattern")
+                else:
+                    t_pattern = None
+
             st.markdown(clean_html('<div class="primary-btn-marker"></div>'), unsafe_allow_html=True)
-            submit_btn = st.form_submit_button("➕ Add Task to Plan")
+            submit_btn = st.form_submit_button("➕ Add Task to Plan", use_container_width=True)
             if submit_btn:
                 if not t_title:
                     st.error("Task title is required.")
@@ -1006,19 +1077,8 @@ with tab3:
                         due_date=date.today() if t_recurring else None,
                     ))
                     _save(owner)
-                    
                     if st.session_state.get("sched_data"):
-                        scheduler = DailyScheduler(owner, date.today())
-                        scheduler.load_from_owner()
-                        scheduler.generate_schedule()
-                        st.session_state.sched_data = {
-                            "scheduler": scheduler,
-                            "scheduled": scheduler.scheduled_tasks,
-                            "deferred":  scheduler.unscheduled_tasks,
-                            "reasoning": scheduler.get_reasoning(),
-                            "budget":    scheduler.daily_time_limit_minutes,
-                        }
-                    
+                        _regen_schedule(owner)
                     st.success(f"Successfully added '{t_title}' to {selected_name}'s schedule!")
                     st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)

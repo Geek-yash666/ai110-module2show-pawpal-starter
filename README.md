@@ -44,20 +44,21 @@ pip install -r requirements.txt
 
 ## ✨ Features
 
-| Feature | Description |
-| ------- | ----------- |
-| **Priority-based scheduling** | Tasks sorted critical → high → medium → low. Within each tier, pets with medical conditions are scheduled first. |
-| **Greedy time-budget enforcement** | Owner sets a daily care budget (hours). Tasks that would exceed it are automatically deferred, never silently dropped. |
-| **Chronological sorting** | `sort_by_time()` reorders the generated plan by `time_slot_preference`. Specific `HH:MM` times interleave correctly with named slots (`morning` = 06:00, `anytime` = 12:00, `evening` = 18:00). |
-| **Pet & status filtering** | `filter_tasks()` narrows the view by pet name and/or completion status — composable and case-insensitive. |
-| **Conflict warnings** | Two-pass detection: exact `HH:MM` slot collisions and duration-overlap on `[start, start+duration)` intervals. Warnings surface in the UI as `st.warning()` banners; the schedule is never crashed. |
-| **Daily recurrence** | Recurring tasks store a `due_date`. Marking one complete calls `generate_next_occurrence()`, which returns a fresh `Task` with `due_date + timedelta`. `apply_recurring_tasks()` attaches all next-day instances to the correct pets automatically. |
-| **Natural-language decision log** | Every scheduling decision is logged (`SCHEDULED`, `DEFERRED`, `SKIPPED`, `CONFLICT`, `RECURRING`) and exposed in the UI for full transparency. |
-| **Streamlit UI** | Three-tab interface: generate and view the sorted, filtered schedule; manage pets; add tasks. Conflicts are shown as prominent warning banners above the timeline. |
+| Feature                                  | Description                                                                                                                                                                                                                                                  |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Priority-based scheduling**      | Tasks sorted critical → high → medium → low. Within each tier, pets with medical conditions are scheduled first.                                                                                                                                          |
+| **Greedy time-budget enforcement** | Owner sets a daily care budget (hours). Tasks that would exceed it are automatically deferred, never silently dropped.                                                                                                                                       |
+| **Chronological sorting**          | `sort_by_time()` reorders the generated plan by `time_slot_preference`. Specific `HH:MM` times interleave correctly with named slots (`morning` = 06:00, `anytime` = 12:00, `evening` = 18:00).                                                  |
+| **Pet & status filtering**         | `filter_tasks()` narrows the view by pet name and/or completion status — composable and case-insensitive.                                                                                                                                                 |
+| **Conflict warnings**              | Two-pass detection: exact`HH:MM` slot collisions and duration-overlap on `[start, start+duration)` intervals. Warnings surface in the UI as `st.warning()` banners; the schedule is never crashed.                                                     |
+| **Daily recurrence**               | Recurring tasks store a`due_date`. Marking one complete calls `generate_next_occurrence()`, which returns a fresh `Task` with `due_date + timedelta`. `apply_recurring_tasks()` attaches all next-day instances to the correct pets automatically. |
+| **Natural-language decision log**  | Every scheduling decision is logged (`SCHEDULED`, `DEFERRED`, `SKIPPED`, `CONFLICT`, `RECURRING`) and exposed in the UI for full transparency.                                                                                                     |
+| **Streamlit UI**                   | Three-tab interface: generate and view the sorted, filtered schedule; manage pets; add tasks. Conflicts are shown as prominent warning banners above the timeline.                                                                                           |
 
 ## 🧪 Testing PawPal+
 
 **Run the full test suite:**
+
 ```bash
 python -m pytest tests/test_pawpal.py -v
 ```
@@ -73,6 +74,7 @@ The test suite covers 48 critical behaviors across five areas:
 - **Edge cases** (10 tests): empty pool, pet with no tasks, owner with no pets, budget boundary conditions (exact fit vs. overflow), cross-pet conflicts, mixed slot ordering, combined filtering
 
 **Test Run Output:**
+
 ```
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.13, pytest-9.1.1, pluggy-1.6.0
@@ -134,6 +136,7 @@ tests/test_pawpal.py::TestEdgeCases::test_sort_stable_equal_slots PASSED [100%]
 **Confidence Level: ⭐⭐⭐⭐⭐ (5/5)**
 
 All 48 tests pass with zero failures. The test suite validates:
+
 - Data integrity (no race conditions, immutable fields protected)
 - Scheduling correctness (priority ordering, medical urgency, time-budget enforcement)
 - Conflict detection (exact slot collision, duration overlap, cross-pet conflicts)
@@ -145,13 +148,13 @@ The system is **production-ready** for a single-owner, single-day scheduling con
 
 ## 📐 Smarter Scheduling
 
-| Feature              | Method(s)                                          | Notes |
-| -------------------- | -------------------------------------------------- | ----- |
-| **Task sorting**     | `DailyScheduler.sort_by_time(entries?)`            | Sorts any `{task, pet}` list by `time_slot_preference`. Named slots (`morning`, `anytime`, `evening`) map to representative clock times (06:00 / 12:00 / 18:00) so they interleave naturally with explicit `HH:MM` tasks. Uses a `lambda` key over `_slot_to_minutes()`. |
-| **Priority sorting** | `DailyScheduler.generate_schedule()`               | Greedy sort: critical → high → medium → low. Within each priority tier, pets with `medical_notes` are scheduled first. Tie-breaks by slot time. |
-| **Filtering**        | `DailyScheduler.filter_tasks(pet_name, completed)` | Filters any `{task, pet}` list by pet name (case-insensitive) and/or completion status. Both parameters are optional and composable. |
-| **Conflict handling**| `DailyScheduler.resolve_conflicts()`               | Two-pass detection: (1) exact `HH:MM` slot collision; (2) duration-overlap check on `[start, start+duration)` intervals. Returns warning strings and appends to the decision log without crashing. |
-| **Recurring tasks**  | `Task.generate_next_occurrence()`, `DailyScheduler.apply_recurring_tasks()` | `generate_next_occurrence()` returns a fresh Task with `due_date = original + timedelta`. `apply_recurring_tasks()` iterates completed recurring tasks, generates the next instance, and attaches it to the owning Pet. Supports `daily` (+1 day) and `weekly` (+7 days). |
+| Feature                     | Method(s)                                                                       | Notes                                                                                                                                                                                                                                                                                   |
+| --------------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Task sorting**      | `DailyScheduler.sort_by_time(entries?)`                                       | Sorts any`{task, pet}` list by `time_slot_preference`. Named slots (`morning`, `anytime`, `evening`) map to representative clock times (06:00 / 12:00 / 18:00) so they interleave naturally with explicit `HH:MM` tasks. Uses a `lambda` key over `_slot_to_minutes()`. |
+| **Priority sorting**  | `DailyScheduler.generate_schedule()`                                          | Greedy sort: critical → high → medium → low. Within each priority tier, pets with`medical_notes` are scheduled first. Tie-breaks by slot time.                                                                                                                                     |
+| **Filtering**         | `DailyScheduler.filter_tasks(pet_name, completed)`                            | Filters any`{task, pet}` list by pet name (case-insensitive) and/or completion status. Both parameters are optional and composable.                                                                                                                                                   |
+| **Conflict handling** | `DailyScheduler.resolve_conflicts()`                                          | Two-pass detection: (1) exact`HH:MM` slot collision; (2) duration-overlap check on `[start, start+duration)` intervals. Returns warning strings and appends to the decision log without crashing.                                                                                   |
+| **Recurring tasks**   | `Task.generate_next_occurrence()`, `DailyScheduler.apply_recurring_tasks()` | `generate_next_occurrence()` returns a fresh Task with `due_date = original + timedelta`. `apply_recurring_tasks()` iterates completed recurring tasks, generates the next instance, and attaches it to the owning Pet. Supports `daily` (+1 day) and `weekly` (+7 days).     |
 
 ## 📸 Demo Walkthrough
 
@@ -163,6 +166,8 @@ The app opens to a three-tab layout with a collapsible sidebar:
 - **Tab 1 — Today's Schedule** — generate the day's plan, view the sorted timeline, apply filters, and read conflict warnings and the decision log.
 - **Tab 2 — Manage Pets** — register new pets (name, species, breed, age, energy level, medical notes), view registered pets as cards with their task lists, and remove pets or individual tasks.
 - **Tab 3 — Add Tasks** — assign a task (title, category, duration, priority, time preference, recurrence) to any registered pet.
+
+![1782770634114](image/README/1782770634114.png)
 
 ### Example Workflow
 
@@ -177,14 +182,14 @@ The app opens to a three-tab layout with a collapsible sidebar:
 
 ### Key Scheduler Behaviors Shown
 
-| Behavior | What you see |
-| -------- | ------------ |
-| Priority ordering | Arthritis medication (critical) always appears before Morning walk (high) |
-| Medical urgency | Biscuit's tasks scheduled before Mochi's within the same priority tier |
-| Time-sorted timeline | After filtering, tasks reorder by slot time (08:00 → 09:00 → 15:00 → 18:30), not insertion order |
-| Deferred tasks | Grooming session (low, 45 min) appears in the *Deferred* column when budget runs short |
-| Conflict warning | `st.warning()` banner: *"'Breakfast feeding' requests slot 08:00 already claimed by 'Arthritis medication'"* |
-| Recurring rollover | Marking a daily task complete creates the next-day instance, logged as `RECURRING` |
+| Behavior             | What you see                                                                                                     |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Priority ordering    | Arthritis medication (critical) always appears before Morning walk (high)                                        |
+| Medical urgency      | Biscuit's tasks scheduled before Mochi's within the same priority tier                                           |
+| Time-sorted timeline | After filtering, tasks reorder by slot time (08:00 → 09:00 → 15:00 → 18:30), not insertion order              |
+| Deferred tasks       | Grooming session (low, 45 min) appears in the*Deferred* column when budget runs short                          |
+| Conflict warning     | `st.warning()` banner: *"'Breakfast feeding' requests slot 08:00 already claimed by 'Arthritis medication'"* |
+| Recurring rollover   | Marking a daily task complete creates the next-day instance, logged as`RECURRING`                              |
 
 ### CLI Output (`python main.py`)
 
@@ -260,11 +265,11 @@ Owner.load_from_json("data.json")      ← reconstructs full object graph
 
 ### Files modified
 
-| File | Change |
-| ---- | ------ |
-| `pawpal_system.py` | Added `Task.to_dict()`, `Task.from_dict()`, `Pet.to_dict()`, `Pet.from_dict()`, `Owner.to_dict()`, `Owner.from_dict()`, `Owner.save_to_json()`, `Owner.load_from_json()` |
-| `app.py` | Startup loads `data.json` if it exists; `_save(owner)` called after every mutation |
-| `main.py` | Persistence demo at end of script round-trips the owner graph through `data.json` |
+| File                 | Change                                                                                                                                                                                  |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pawpal_system.py` | Added`Task.to_dict()`, `Task.from_dict()`, `Pet.to_dict()`, `Pet.from_dict()`, `Owner.to_dict()`, `Owner.from_dict()`, `Owner.save_to_json()`, `Owner.load_from_json()` |
+| `app.py`           | Startup loads`data.json` if it exists; `_save(owner)` called after every mutation                                                                                                   |
+| `main.py`          | Persistence demo at end of script round-trips the owner graph through`data.json`                                                                                                      |
 
 ### Sample `data.json` (excerpt)
 
